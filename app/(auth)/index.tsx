@@ -17,7 +17,7 @@ export default function Index() {
         </Text>
 
         <TouchableOpacity
-          className="bg-[#7ED6D1] py-4 rounded-full items-center mb-4"
+          className="bg-primary py-4 rounded-full items-center mb-4"
           onPress={() => router.push("/(auth)/phone-number")}
         >
           <Text className="text-[#001F2B] font-semibold text-base">

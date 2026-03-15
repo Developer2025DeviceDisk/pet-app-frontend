@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -7,7 +8,12 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Alert,
+    ActivityIndicator
 } from "react-native";
+import { Image } from "expo-image";
+import { API_URL } from "../../constants/api";
+import { useAuth } from "../../context/AuthContext";
 
 const STATES = [
     "Andhra Pradesh", "Delhi", "Gujarat", "Karnataka",
@@ -28,13 +34,79 @@ const CITIES: Record<string, string[]> = {
 
 export default function OwnerDetails() {
     const router = useRouter();
+    const { token } = useAuth();
 
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
     const [selectedState, setSelectedState] = useState("");
     const [selectedCity, setSelectedCity] = useState("");
+    const [image, setImage] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+    const pickImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert("Permission Denied", "We need your permission to access your gallery.");
+            return;
+        }
+
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: false,
+            quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            setImage(result.assets[0].uri);
+        }
+    };
+
+    const handleNext = async () => {
+        if (!fullName || !email || !selectedState || !selectedCity) {
+            Alert.alert("Error", "Please fill in all required fields.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const formData = new FormData();
+            formData.append("fullName", fullName);
+            formData.append("email", email);
+            formData.append("state", selectedState);
+            formData.append("city", selectedCity);
+
+            if (image) {
+                const filename = image.split('/').pop();
+                const match = /\.(\w+)$/.exec(filename!);
+                const type = match ? `image/${match[1]}` : `image`;
+                // @ts-ignore
+                formData.append("profileImage", { uri: image, name: filename, type });
+            }
+
+            const response = await fetch(`${API_URL}/user/profile`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                },
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                router.replace("/(tabs)/" as any);
+            } else {
+                Alert.alert("Error", data.message || "Failed to save profile details");
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "Something went wrong. Please check your connection.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const toggleDropdown = (field: string) =>
         setOpenDropdown(openDropdown === field ? null : field);
@@ -75,10 +147,19 @@ export default function OwnerDetails() {
 
                 {/* Image Upload */}
                 <TouchableOpacity
-                    className="w-[70px] h-[70px] bg-[#1C2B35] rounded-xl justify-center items-center mb-8"
+                    className="w-[70px] h-[70px] bg-[#1C2B35] rounded-xl justify-center items-center mb-8 overflow-hidden"
                     activeOpacity={0.8}
+                    onPress={pickImage}
                 >
-                    <Ionicons name="add-circle-outline" size={28} color="#888" />
+                    {image ? (
+                        <Image
+                            source={{ uri: image }}
+                            style={{ width: '100%', height: '100%' }}
+                            contentFit="cover"
+                        />
+                    ) : (
+                        <Ionicons name="add-circle-outline" size={28} color="#888" />
+                    )}
                 </TouchableOpacity>
 
                 {/* Full Name */}
@@ -120,7 +201,11 @@ export default function OwnerDetails() {
                         placeholderTextColor="#888"
                         keyboardType="phone-pad"
                         value={phone}
-                        onChangeText={setPhone}
+                        maxLength={10}
+                        onChangeText={(text) => {
+                            const cleaned = text.replace(/[^0-9]/g, "");
+                            setPhone(cleaned);
+                        }}
                     />
                 </View>
                 <View className="h-px bg-[#2A3A45] mb-6" />
@@ -205,12 +290,18 @@ export default function OwnerDetails() {
             {/* Next Button */}
             <View className="absolute bottom-0 left-0 right-0 px-6 pb-10 bg-[#07141D]">
                 <TouchableOpacity
-                    className="bg-[#7ED6D1] py-4 rounded-full items-center"
-                    onPress={() => router.push("/(tabs)")}
+                    className="bg-primary py-4 rounded-full items-center"
+                    onPress={handleNext}
+                    disabled={loading}
                 >
-                    <Text className="text-[#001F2B] font-bold text-base">Next</Text>
+                    {loading ? (
+                        <ActivityIndicator color="#001F2B" />
+                    ) : (
+                        <Text className="text-[#001F2B] font-bold text-base">Next</Text>
+                    )}
                 </TouchableOpacity>
             </View>
         </View>
     );
 }
+

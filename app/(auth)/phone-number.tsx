@@ -1,9 +1,63 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import { Text, TextInput, TouchableOpacity, View, Alert, ActivityIndicator } from "react-native";
+import Toast from 'react-native-toast-message';
+import { API_URL } from "../../constants/api";
 
 export default function PhoneNumber() {
   const router = useRouter();
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSendOtp = async () => {
+    if (phone.length < 10) {
+      Alert.alert("Error", "Please enter a valid phone number");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Show OTP in a beautiful Toast banner
+        Toast.show({
+          type: 'otp',
+          text1: 'Verification Code',
+          text2: String(data.otp),
+          visibilityTime: 10000,
+          autoHide: true,
+          topOffset: 10,
+        });
+
+        // Redirect to verify-otp
+        router.push({
+          pathname: "/(auth)/verify-otp",
+          params: { phone },
+        });
+
+      } else {
+        Alert.alert("Error", data.message || "Failed to send OTP");
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Something went wrong. Please check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
 
   return (
     <View className="flex-1 bg-[#07141D] px-6 pt-16">
@@ -24,6 +78,9 @@ export default function PhoneNumber() {
           placeholderTextColor="#888"
           keyboardType="phone-pad"
           className="flex-1 text-[#DDE6F0] text-base"
+          value={phone}
+          onChangeText={setPhone}
+          maxLength={10}
         />
       </View>
 
@@ -34,18 +91,19 @@ export default function PhoneNumber() {
 
       {/* Button */}
       <TouchableOpacity
-        className="mt-auto mb-5 bg-[#7ED6D1] py-4 rounded-full items-center"
-        onPress={() =>
-          router.push({
-            pathname: "/(auth)/verify-otp",
-            params: { phone: "9555942520" },
-          })
-        }
+        className="mt-auto mb-12 bg-primary py-4 rounded-full items-center"
+        onPress={handleSendOtp}
+        disabled={loading}
       >
-        <Text className="text-[#001F2B] font-semibold text-base">
-          Send verification code
-        </Text>
+        {loading ? (
+          <ActivityIndicator color="#001F2B" />
+        ) : (
+          <Text className="text-[#001F2B] font-semibold text-base">
+            Send verification code
+          </Text>
+        )}
       </TouchableOpacity>
     </View>
   );
 }
+
