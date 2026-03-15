@@ -19,6 +19,7 @@ import { Image } from "expo-image";
 import { API_URL } from "../../constants/api";
 import { useAuth } from "../../context/AuthContext";
 import { DOG_BREEDS } from "../../constants/breeds";
+import { getUploadableUri } from "../../utils/fileUpload";
 
 const GOALS = ["Find Mate", "Play Date", "Both"];
 const GENDERS = ["Male", "Female"];
@@ -84,13 +85,14 @@ export default function PetDetails() {
             formData.append("temperament", temperament);
             formData.append("goal", selectedGoal);
 
-            images.forEach((uri, index) => {
-                const filename = uri.split('/').pop();
-                const match = /\.(\w+)$/.exec(filename!);
-                const type = match ? `image/${match[1]}` : `image`;
-                // @ts-ignore
-                formData.append("images", { uri, name: filename, type });
-            });
+            for (const uri of images) {
+                const fileUri = await getUploadableUri(uri);
+                const filename = fileUri.split('/').pop() || `image_${Date.now()}.jpg`;
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : "image/jpeg";
+                // @ts-ignore - React Native FormData accepts { uri, name, type }
+                formData.append("images", { uri: fileUri, name: filename, type });
+            }
 
             const response = await fetch(`${API_URL}/pet`, {
                 method: "POST",

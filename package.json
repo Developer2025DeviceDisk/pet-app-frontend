@@ -3,12 +3,12 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "start": "node scripts/run-expo.js start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
+    "android": "node scripts/run-expo.js run:android",
+    "ios": "node scripts/run-expo.js run:ios",
+    "web": "node scripts/run-expo.js start --web",
+    "lint": "node scripts/run-expo.js lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -20,6 +20,7 @@
     "expo": "~54.0.33",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.13",
+    "expo-file-system": "^55.0.10",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",

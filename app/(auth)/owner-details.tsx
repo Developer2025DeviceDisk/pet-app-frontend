@@ -14,6 +14,7 @@ import {
 import { Image } from "expo-image";
 import { API_URL } from "../../constants/api";
 import { useAuth } from "../../context/AuthContext";
+import { getUploadableUri } from "../../utils/fileUpload";
 
 const STATES = [
     "Andhra Pradesh", "Delhi", "Gujarat", "Karnataka",
@@ -78,11 +79,12 @@ export default function OwnerDetails() {
             formData.append("city", selectedCity);
 
             if (image) {
-                const filename = image.split('/').pop();
-                const match = /\.(\w+)$/.exec(filename!);
-                const type = match ? `image/${match[1]}` : `image`;
-                // @ts-ignore
-                formData.append("profileImage", { uri: image, name: filename, type });
+                const fileUri = await getUploadableUri(image);
+                const filename = fileUri.split('/').pop() || `profile_${Date.now()}.jpg`;
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : "image/jpeg";
+                // @ts-ignore - React Native FormData accepts { uri, name, type }
+                formData.append("profileImage", { uri: fileUri, name: filename, type });
             }
 
             const response = await fetch(`${API_URL}/user/profile`, {
