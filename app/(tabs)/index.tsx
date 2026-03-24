@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dimensions,
   Text,
@@ -26,6 +26,9 @@ export default function HomeScreen() {
   const [pets, setPets] = useState<any[]>([]);
   const [myPets, setMyPets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [allSwiped, setAllSwiped] = useState(false);
+  const [seenPetIds, setSeenPetIds] = useState<string[]>([]);
+  const swiperRef = useRef<any>(null);
 
   const {
     breed,
@@ -53,11 +56,12 @@ export default function HomeScreen() {
       }
     };
     if (token) {
-        fetchMyPets();
+      fetchMyPets();
     }
 
     const currentParams = JSON.stringify({ breed, gender, ageRange, healthBadge, temperament, distance });
     if (currentParams !== lastParams) {
+      setAllSwiped(false);
       fetchPets();
       setLastParams(currentParams);
     }
@@ -86,11 +90,16 @@ export default function HomeScreen() {
       });
       const data = await response.json();
       if (data.success) {
-        console.log("Fetched pets successfully, count:", data.pets.length);
-        if (data.pets.length > 0 && data.pets[0].images) {
-          console.log("Sample Image URL:", `${BASE_URL}${data.pets[0].images[0]}`);
+        
+        // Exclude pets that the user has already swiped during this session
+        const newPets = data.pets.filter((p: any) => !seenPetIds.includes(p._id));
+
+        console.log("Fetched pets gracefully, count:", newPets.length);
+        if (newPets.length > 0 && newPets[0].images) {
+          console.log("Sample Image URL:", `${BASE_URL}${newPets[0].images[0]}`);
         }
-        setPets(data.pets);
+        setPets(newPets);
+        setAllSwiped(newPets.length === 0);
       }
     } catch (error) {
       console.error("Error fetching pets:", error);
@@ -124,6 +133,22 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error("Error liking pet:", error);
+    }
+  };
+
+  const handleDislike = async (petId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/pet/dislike`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ petId }),
+      });
+      // Optionally handle logic correctly if backend is tracking dislikes
+    } catch (error) {
+      console.error("Error disliking pet:", error);
     }
   };
 
@@ -163,7 +188,7 @@ export default function HomeScreen() {
         </View>
 
         <TouchableOpacity
-          onPress={() => router.push("/filter")}
+          onPress={() => router.push({ pathname: "/filter" as any, params: searchParams })}
           className="bg-[#1C2C35] w-12 h-12 rounded-full items-center justify-center">
           <Ionicons name="options-outline" size={24} color="#DDE6F0" />
         </TouchableOpacity>
@@ -197,162 +222,185 @@ export default function HomeScreen() {
           <View className="flex-1 justify-center items-center">
             <ActivityIndicator size="large" color="#7ED6D1" />
           </View>
-        ) : pets && pets.length > 0 ? (
-          <Swiper
-            key={`swiper-${lastParams}-${pets.length}`} // Force remount only when filters or data length actually change
-            cards={pets}
-            renderCard={(card) => {
-              if (!card) return null;
-              return (
-                <View className="bg-[#1C2C35] rounded-3xl overflow-hidden h-[380px] shadow-xl border border-[#3A4A55]">
-                  {/* Fallback Icon */}
-                  <View className="absolute inset-0 items-center justify-center opacity-10">
-                    <Ionicons name="paw-outline" size={80} color="#7ED6D1" />
-                  </View>
-
-                  <View className="flex-1 items-center justify-center">
-                    <View className="w-full h-full overflow-hidden bg-[#07141D]">
-                      <Image
-                        source={{
-                          uri: card.images && card.images.length > 0
-                            ? `${BASE_URL}${card.images[0].replace(/\\/g, '/')}`
-                            : "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e"
-                        }}
-                        style={{ width: '100%', height: '100%' }}
-                        contentFit="cover"
-                        transition={500}
-                        cachePolicy="disk"
-                      />
+        ) : pets && pets.length > 0 && !allSwiped ? (
+          <View className="flex-1">
+            <Swiper
+              ref={swiperRef}
+              key={`swiper-${lastParams}-${pets.length}`} // Force remount only when filters or data length actually change
+              cards={pets}
+              renderCard={(card) => {
+                if (!card) return null;
+                return (
+                  <View className="bg-[#1C2C35] rounded-3xl overflow-hidden h-[360px] shadow-xl border border-[#3A4A55]">
+                    {/* Fallback Icon */}
+                    <View className="absolute inset-0 items-center justify-center opacity-10">
+                      <Ionicons name="paw-outline" size={80} color="#7ED6D1" />
                     </View>
-                  </View>
 
-                  {/* Breed Badge */}
-                  <View className="absolute top-4 right-4 bg-[#7ED6D1]/20 px-3 py-1  border border-[#7ED6D1]/30">
-                    <Text className="text-[#7ED6D1] text-xs font-bold">{card.breed}</Text>
-                  </View>
+                    <View className="flex-1 items-center justify-center">
+                      <View className="w-full h-full overflow-hidden bg-[#07141D]">
+                        <Image
+                          source={{
+                            uri: card.images && card.images.length > 0
+                              ? `${BASE_URL}${card.images[0].replace(/\\/g, '/')}`
+                              : "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e"
+                          }}
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="cover"
+                          transition={500}
+                          cachePolicy="disk"
+                        />
+                      </View>
+                    </View>
 
-                  {/* Info Section */}
-                  <View className="p-6 bg-[#1C2C35] border-t border-[#3A4A55]">
-                    <View className="flex-row justify-between items-center mb-3">
-                      <View className="flex-row items-center">
-                        <Text className="text-white text-2xl font-bold mr-2">
-                          {card.petName}, {card.age}
-                        </Text>
-                        <View className="bg-green-500 rounded-full p-0.5">
-                          <Ionicons name="checkmark" size={14} color="white" />
+                    {/* Breed Badge */}
+                    <View className="absolute top-4 right-4 bg-[#7ED6D1]/20 px-3 py-1  border border-[#7ED6D1]/30">
+                      <Text className="text-[#7ED6D1] text-xs font-bold">{card.breed}</Text>
+                    </View>
+
+                    {/* Info Section */}
+                    <View className="p-6 bg-[#1C2C35] border-t border-[#3A4A55]">
+                      <View className="flex-row justify-between items-center mb-3">
+                        <View className="flex-row items-center">
+                          <Text className="text-white text-2xl font-bold mr-2">
+                            {card.petName}, {card.age}
+                          </Text>
+                          <View className="bg-green-500 rounded-full p-0.5">
+                            <Ionicons name="checkmark" size={14} color="white" />
+                          </View>
+                        </View>
+                        <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full border border-[#3A4A55]">
+                          <Ionicons name="male-female" size={14} color="#7ED6D1" />
+                          <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">{card.gender}</Text>
                         </View>
                       </View>
-                      <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full border border-[#3A4A55]">
-                        <Ionicons name="male-female" size={14} color="#7ED6D1" />
-                        <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">{card.gender}</Text>
-                      </View>
-                    </View>
 
-                    <View className="flex-row items-center">
-                      <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full mr-2">
-                        <Ionicons name="location-outline" size={14} color="#7ED6D1" />
-                        <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">
-                          {card.owner?.city ? `${card.owner.city}, ${card.owner.state}` : "Nearby"}
-                        </Text>
-                      </View>
-                      <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full">
-                        <Ionicons name="heart-half-outline" size={14} color="#7ED6D1" />
-                        <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">
-                          {card.temperament || "Friendly"}
-                        </Text>
+                      <View className="flex-row items-center">
+                        <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full mr-2">
+                          <Ionicons name="location-outline" size={14} color="#7ED6D1" />
+                          <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">
+                            {card.owner?.city ? `${card.owner.city}, ${card.owner.state}` : "Nearby"}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center bg-[#07141D] px-3 py-1 rounded-full">
+                          <Ionicons name="heart-half-outline" size={14} color="#7ED6D1" />
+                          <Text className="text-[#DDE6F0] text-xs ml-1 font-medium">
+                            {card.temperament || "Friendly"}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   </View>
-                </View>
-              )
-            }}
-            onSwipedRight={(cardIndex) => {
-              const likedPet = pets[cardIndex];
-              if (likedPet) {
-                handleLike(likedPet._id);
-              }
-            }}
-            onSwiped={(cardIndex) => { console.log("Swiped index:", cardIndex); }}
-            onSwipedAll={() => { console.log('All cards swiped'); }}
-            cardIndex={0}
-            backgroundColor={'transparent'}
-            stackSize={3}
-            stackSeparation={15}
-            disableBottomSwipe
-            overlayLabels={{
-              left: {
-                title: 'NOPE',
-                style: {
-                  label: {
-                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                    borderColor: '#ef4444',
-                    color: 'white',
-                    borderWidth: 1,
-                    borderRadius: 5,
-                    padding: 10
-                  },
-                  wrapper: {
-                    flexDirection: 'column',
-                    alignItems: 'flex-end',
-                    justifyContent: 'flex-start',
-                    marginTop: 30,
-                    marginLeft: -30
+                )
+              }}
+              onSwipedRight={(cardIndex) => {
+                const likedPet = pets[cardIndex];
+                if (likedPet) {
+                  setSeenPetIds(prev => [...prev, likedPet._id]);
+                  handleLike(likedPet._id);
+                }
+              }}
+              onSwipedLeft={(cardIndex) => {
+                const dislikedPet = pets[cardIndex];
+                if (dislikedPet) {
+                  setSeenPetIds(prev => [...prev, dislikedPet._id]);
+                  handleDislike(dislikedPet._id);
+                }
+              }}
+              onSwiped={(cardIndex) => { console.log("Swiped index:", cardIndex); }}
+              onSwipedAll={() => {
+                console.log('All cards swiped');
+                setAllSwiped(true);
+              }}
+              cardIndex={0}
+              backgroundColor={'transparent'}
+              stackSize={3}
+              stackSeparation={20}
+              stackScale={3}
+              disableBottomSwipe
+              onSwipedTop={(cardIndex) => {
+                console.log("Swiped top (upward):", cardIndex);
+              }}
+              overlayLabels={{
+                left: {
+                  title: 'NOPE',
+                  style: {
+                    label: {
+                      backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                      borderColor: '#ef4444',
+                      color: 'white',
+                      borderWidth: 1,
+                      borderRadius: 5,
+                      padding: 10
+                    },
+                    wrapper: {
+                      flexDirection: 'column',
+                      alignItems: 'flex-end',
+                      justifyContent: 'flex-start',
+                      marginTop: 30,
+                      marginLeft: -30
+                    }
+                  }
+                },
+                right: {
+                  title: 'LIKE',
+                  style: {
+                    label: {
+                      backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                      borderColor: '#22c55e',
+                      color: 'white',
+                      borderWidth: 1,
+                      borderRadius: 5,
+                      padding: 10
+                    },
+                    wrapper: {
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      justifyContent: 'flex-start',
+                      marginTop: 30,
+                      marginLeft: 30
+                    }
                   }
                 }
-              },
-              right: {
-                title: 'LIKE',
-                style: {
-                  label: {
-                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
-                    borderColor: '#22c55e',
-                    color: 'white',
-                    borderWidth: 1,
-                    borderRadius: 5,
-                    padding: 10
-                  },
-                  wrapper: {
-                    flexDirection: 'column',
-                    alignItems: 'flex-start',
-                    justifyContent: 'flex-start',
-                    marginTop: 30,
-                    marginLeft: 30
-                  }
-                }
-              }
-            }}
-            animateCardOpacity
-            swipeBackCard
-          />
+              }}
+              animateCardOpacity
+              swipeBackCard
+            />
+            {/* Action Buttons */}
+            <View className="absolute bottom-[35px] w-full flex-row justify-center items-center gap-6 z-50">
+              <TouchableOpacity
+                onPress={() => { swiperRef.current?.swipeLeft(); }}
+                activeOpacity={0.7}
+                className="bg-[#3A4A55] w-[60px] h-[60px] rounded-full items-center justify-center border border-[#3A4A55] shadow-lg"
+              >
+                <Ionicons name="close" size={32} color="#DDE6F0" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => { swiperRef.current?.swipeRight(); }}
+                activeOpacity={0.7}
+                className="bg-[#FF4D67] w-[60px] h-[60px] rounded-full items-center justify-center shadow-lg shadow-[#FF4D67]/30"
+              >
+                <Ionicons name="heart" size={32} color="white" />
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
           <View className="flex-1 justify-center items-center px-10">
             <View className="bg-[#1C2C35] p-10 rounded-full mb-6 border border-[#3A4A55]">
-              <Ionicons name="paw-outline" size={64} color="#7ED6D1" />
+              <Ionicons name={allSwiped ? "checkmark-circle-outline" : "paw-outline"} size={64} color="#7ED6D1" />
             </View>
-            <Text className="text-[#DDE6F0] text-xl font-bold mt-4">No pets found</Text>
+            <Text className="text-[#DDE6F0] text-xl font-bold mt-4">
+              {allSwiped ? "You're all caught up!" : "No pets found"}
+            </Text>
             <Text className="text-[#DDE6F0] opacity-60 text-center mt-2 leading-6">
-              Adjust your filters or distance range to explore more pets nearby.
+              {allSwiped
+                ? "You've swiped through all available profiles! New profiles will appear when available."
+                : "Adjust your filters or distance range to explore more pets nearby."}
             </Text>
           </View>
         )}
       </View>
-
-
-      {/* Action Buttons */}
-      <View className="flex-row justify-center items-center gap-6 mb-10">
-        <TouchableOpacity className="bg-[#3A4A55] w-14 h-14 rounded-full items-center justify-center border border-[#3A4A55] shadow-lg">
-          <Ionicons name="close" size={28} color="#DDE6F0" />
-        </TouchableOpacity>
-
-        {/* <TouchableOpacity className="bg-[#7ED6D1] w-14 h-14 rounded-full items-center justify-center shadow-lg shadow-[#7ED6D1]/30">
-          <Ionicons name="flash" size={28} color="#001F2B" />
-        </TouchableOpacity> */}
-
-        <TouchableOpacity className="bg-[#FF4D67] w-14 h-14 rounded-full items-center justify-center shadow-lg shadow-[#FF4D67]/30">
-          <Ionicons name="heart" size={28} color="white" />
-        </TouchableOpacity>
-      </View>
     </LinearGradient>
   );
 }
-

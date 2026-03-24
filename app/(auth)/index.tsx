@@ -25,9 +25,9 @@ export default function Index() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity className="bg-[#3A3F44] py-4 rounded-full items-center">
+        {/* <TouchableOpacity className="bg-[#3A3F44] py-4 rounded-full items-center">
           <Text className="text-white text-[15px]">Continue with Google</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
     </ImageBackground>
   );
