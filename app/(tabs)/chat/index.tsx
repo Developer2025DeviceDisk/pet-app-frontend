@@ -68,7 +68,13 @@ export default function ChatScreen() {
     return (
       <TouchableOpacity
         className={`flex-row items-center py-4 px-5 ${isActive ? 'bg-[#3A4A55]/40 border-y border-white/5' : ''}`}
-        onPress={() => router.push(`/chat/${item._id}` as any)}
+        onPress={() => router.push({
+            pathname: `/chat/${item._id}` as any,
+            params: {
+                petName: otherPet?.petName || 'Pet',
+                ownerName: otherUser?.fullName || 'Owner'
+            }
+        })}
         activeOpacity={0.7}
       >
         <View className="relative mr-4 w-14 h-14 rounded-full overflow-hidden">

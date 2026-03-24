@@ -13,18 +13,21 @@ import {
     Modal,
     FlatList,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import { API_URL } from "../../constants/api";
 import { useAuth } from "../../context/AuthContext";
 import { DOG_BREEDS } from "../../constants/breeds";
+import { getUploadableUri } from "../../utils/fileUpload";
 
 const GOALS = ["Find Mate", "Play Date", "Both"];
 const GENDERS = ["Male", "Female"];
 const AGES = ["< 1 year", "1 year", "2 years", "3 years", "4 years", "5+ years"];
 const HEALTH_BADGES = ["Vaccinated", "Neutered", "Healthy", "Special Care"];
 const TEMPERAMENTS = ["Calm", "Playful", "Aggressive", "Friendly", "Shy"];
+const MIN_PHOTOS = 2;
 
 export default function PetDetails() {
     const router = useRouter();
@@ -35,13 +38,22 @@ export default function PetDetails() {
     const [breed, setBreed] = useState("");
     const [gender, setGender] = useState("");
     const [age, setAge] = useState("");
-    const [healthBadge, setHealthBadge] = useState("");
+    // Multi-select health badges
+    const [healthBadges, setHealthBadges] = useState<string[]>([]);
     const [temperament, setTemperament] = useState("");
     const [images, setImages] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const [breedModalVisible, setBreedModalVisible] = useState(false);
     const [breedSearch, setBreedSearch] = useState("");
+    // Photo validation error state
+    const [photoError, setPhotoError] = useState(false);
+
+    const toggleHealthBadge = (badge: string) => {
+        setHealthBadges(prev =>
+            prev.includes(badge) ? prev.filter(b => b !== badge) : [...prev, badge]
+        );
+    };
 
     const pickImage = async () => {
         if (images.length >= 4) {
@@ -50,7 +62,6 @@ export default function PetDetails() {
         }
 
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
         if (status !== "granted") {
             Alert.alert("Permission Denied", "Gallery permission is required.");
             return;
@@ -63,13 +74,34 @@ export default function PetDetails() {
         });
 
         if (!result.canceled && result.assets?.length > 0) {
-            setImages([...images, result.assets[0].uri]);
+            const newImages = [...images, result.assets[0].uri];
+            setImages(newImages);
+            // Clear photo error once 2+ images added
+            if (newImages.length >= MIN_PHOTOS) setPhotoError(false);
         }
     };
 
     const handleNext = async () => {
         if (!petName || !breed || !gender || !age) {
             Alert.alert("Error", "Please fill in all required fields.");
+            return;
+        }
+
+        const nameRegex = /^[A-Za-z\s]+$/;
+        if (!nameRegex.test(petName.trim())) {
+            Alert.alert("Error", "Pet name should not contain numbers or special characters.");
+            return;
+        }
+
+        // ── Minimum photo validation ──
+        if (images.length < MIN_PHOTOS) {
+            setPhotoError(true);
+            // Scroll to top is implicit since the image row is at the top
+            Alert.alert(
+                "Photos Required",
+                `Please upload at least ${MIN_PHOTOS} photos of your pet so others can see them! 🐾`,
+                [{ text: "Add Photos", style: "default" }]
+            );
             return;
         }
 
@@ -80,23 +112,23 @@ export default function PetDetails() {
             formData.append("breed", breed);
             formData.append("gender", gender);
             formData.append("age", age);
-            formData.append("healthBadge", healthBadge);
+            // Send healthBadges as JSON string
+            formData.append("healthBadges", JSON.stringify(healthBadges));
             formData.append("temperament", temperament);
             formData.append("goal", selectedGoal);
 
-            images.forEach((uri, index) => {
-                const filename = uri.split('/').pop();
-                const match = /\.(\w+)$/.exec(filename!);
-                const type = match ? `image/${match[1]}` : `image`;
+            for (const uri of images) {
+                const fileUri = await getUploadableUri(uri);
+                const filename = fileUri.split('/').pop() || `image_${Date.now()}.jpg`;
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : "image/jpeg";
                 // @ts-ignore
-                formData.append("images", { uri, name: filename, type });
-            });
+                formData.append("images", { uri: fileUri, name: filename, type });
+            }
 
             const response = await fetch(`${API_URL}/pet`, {
                 method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                },
+                headers: { "Authorization": `Bearer ${token}` },
                 body: formData,
             });
 
@@ -122,7 +154,6 @@ export default function PetDetails() {
         if (field === "breed") setBreed(value);
         if (field === "gender") setGender(value);
         if (field === "age") setAge(value);
-        if (field === "health") setHealthBadge(value);
         if (field === "temperament") setTemperament(value);
         setOpenDropdown(null);
     };
@@ -251,12 +282,12 @@ export default function PetDetails() {
                     Please share some{"\n"}details of pet
                 </Text>
 
-                <Text className="text-[#888] text-[13px] mb-5">
-                    Make sure the images of pet to be clear*
+                <Text className="text-[#888] text-[13px] mb-1">
+                    Add at least {MIN_PHOTOS} clear photos of your pet*
                 </Text>
 
                 {/* Image Upload Row */}
-                <View className="flex-row gap-3 mb-8">
+                <View className="flex-row gap-3 mb-2">
                     {images.map((uri, i) => (
                         <View key={i} className="relative">
                             <Image
@@ -266,7 +297,11 @@ export default function PetDetails() {
                             />
                             <TouchableOpacity
                                 className="absolute -top-1 -right-1 bg-red-500 rounded-full"
-                                onPress={() => setImages(images.filter((_, idx) => idx !== i))}
+                                onPress={() => {
+                                    const updated = images.filter((_, idx) => idx !== i);
+                                    setImages(updated);
+                                    if (updated.length < MIN_PHOTOS) setPhotoError(true);
+                                }}
                             >
                                 <Ionicons name="close-circle" size={20} color="white" />
                             </TouchableOpacity>
@@ -274,14 +309,41 @@ export default function PetDetails() {
                     ))}
                     {images.length < 4 && (
                         <TouchableOpacity
-                            className="w-[70px] h-[70px] bg-[#1C2B35] rounded-xl justify-center items-center"
+                            style={[
+                                styles.addPhotoBtn,
+                                photoError && images.length < MIN_PHOTOS ? styles.addPhotoBtnError : null
+                            ]}
                             activeOpacity={0.8}
                             onPress={pickImage}
                         >
-                            <Ionicons name="add-circle-outline" size={28} color="#888" />
+                            <Ionicons name="add-circle-outline" size={28} color={photoError && images.length < MIN_PHOTOS ? "#FF6B6B" : "#888"} />
                         </TouchableOpacity>
                     )}
                 </View>
+
+                {/* Inline photo validation error */}
+                {photoError && images.length < MIN_PHOTOS && (
+                    <View style={styles.photoErrorBox}>
+                        <Ionicons name="alert-circle" size={16} color="#FF6B6B" />
+                        <Text style={styles.photoErrorText}>
+                            Please add at least {MIN_PHOTOS} photos ({images.length}/{MIN_PHOTOS} added)
+                        </Text>
+                    </View>
+                )}
+
+                {/* Photo count indicator */}
+                {images.length > 0 && images.length < MIN_PHOTOS && !photoError && (
+                    <Text style={styles.photoCountHint}>
+                        {images.length}/{MIN_PHOTOS} photos — add {MIN_PHOTOS - images.length} more
+                    </Text>
+                )}
+                {images.length >= MIN_PHOTOS && (
+                    <Text style={styles.photoCountOk}>
+                        ✓ {images.length} photos added
+                    </Text>
+                )}
+
+                <View className="h-6" />
 
                 {/* Primary Goal */}
                 <Text className="text-[#7ED6D1] text-base font-semibold mb-4">
@@ -297,13 +359,7 @@ export default function PetDetails() {
                                 }`}
                             onPress={() => setSelectedGoal(g)}
                         >
-                            <Text
-                                className={
-                                    selectedGoal === g
-                                        ? "text-[#DDE6F0] font-semibold text-sm"
-                                        : "text-[#888] text-sm"
-                                }
-                            >
+                            <Text className={selectedGoal === g ? "text-[#DDE6F0] font-semibold text-sm" : "text-[#888] text-sm"}>
                                 {g}
                             </Text>
                         </TouchableOpacity>
@@ -317,7 +373,7 @@ export default function PetDetails() {
                         placeholder="Pet Name*"
                         placeholderTextColor="#888"
                         value={petName}
-                        onChangeText={setPetName}
+                        onChangeText={(text) => setPetName(text.replace(/[^a-zA-Z\s]/g, ""))}
                     />
                     <View className="h-px bg-[#2A3A45]" />
                 </View>
@@ -325,7 +381,45 @@ export default function PetDetails() {
                 {renderDropdown("breed", "Pet Breed*", breed, DOG_BREEDS)}
                 {renderDropdown("gender", "Pet Gender*", gender, GENDERS)}
                 {renderDropdown("age", "Pet Age*", age, AGES)}
-                {renderDropdown("health", "Health Badge*", healthBadge, HEALTH_BADGES)}
+
+                {/* ── Multi-select Health Badges ── */}
+                <View className="mb-5">
+                    <Text className="text-[#7ED6D1] text-base font-semibold mb-3">
+                        Health Badges
+                    </Text>
+                    <View className="flex-row flex-wrap gap-2">
+                        {HEALTH_BADGES.map((badge) => {
+                            const selected = healthBadges.includes(badge);
+                            return (
+                                <TouchableOpacity
+                                    key={badge}
+                                    onPress={() => toggleHealthBadge(badge)}
+                                    style={[
+                                        styles.badgeChip,
+                                        selected ? styles.badgeChipSelected : styles.badgeChipUnselected,
+                                    ]}
+                                    activeOpacity={0.7}
+                                >
+                                    {selected && (
+                                        <Ionicons name="checkmark-circle" size={16} color="#07141D" style={{ marginRight: 5 }} />
+                                    )}
+                                    <Text style={[
+                                        styles.badgeChipText,
+                                        selected ? styles.badgeChipTextSelected : styles.badgeChipTextUnselected,
+                                    ]}>
+                                        {badge}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                    {healthBadges.length > 0 && (
+                        <Text style={styles.selectedBadgesHint}>
+                            Selected: {healthBadges.join(", ")}
+                        </Text>
+                    )}
+                </View>
+
                 {renderDropdown("temperament", "Pet Temperament*", temperament, TEMPERAMENTS)}
 
                 <View className="h-24" />
@@ -352,3 +446,83 @@ export default function PetDetails() {
     );
 }
 
+const styles = StyleSheet.create({
+    addPhotoBtn: {
+        width: 70,
+        height: 70,
+        backgroundColor: '#1C2B35',
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    addPhotoBtnError: {
+        borderColor: '#FF6B6B',
+        borderWidth: 2,
+        backgroundColor: 'rgba(255, 107, 107, 0.08)',
+    },
+    photoErrorBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        marginTop: 4,
+        marginBottom: 2,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 107, 107, 0.3)',
+        gap: 6,
+    },
+    photoErrorText: {
+        color: '#FF6B6B',
+        fontSize: 13,
+        flex: 1,
+    },
+    photoCountHint: {
+        color: '#EAC16C',
+        fontSize: 12,
+        marginTop: 4,
+        marginBottom: 2,
+    },
+    photoCountOk: {
+        color: '#7ED6D1',
+        fontSize: 12,
+        marginTop: 4,
+        marginBottom: 2,
+    },
+    // Health badge chips
+    badgeChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1.5,
+    },
+    badgeChipSelected: {
+        backgroundColor: '#7ED6D1',
+        borderColor: '#7ED6D1',
+    },
+    badgeChipUnselected: {
+        backgroundColor: 'transparent',
+        borderColor: '#3A4A55',
+    },
+    badgeChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    badgeChipTextSelected: {
+        color: '#07141D',
+    },
+    badgeChipTextUnselected: {
+        color: '#888',
+    },
+    selectedBadgesHint: {
+        color: '#7ED6D1',
+        fontSize: 12,
+        marginTop: 8,
+        opacity: 0.8,
+    },
+});

@@ -30,9 +30,35 @@ export default function FilterScreen() {
         goodWithKids: false,
     };
 
-    const [distance, setDistance] = useState(125);
-    const [filters, setFilters] = useState(defaultFilters);
-    const [selectedBreeds, setSelectedBreeds] = useState<string[]>([]);
+    // Initialize from searchParams
+    const initialDistance = searchParams.distance ? parseInt(String(searchParams.distance)) : 125;
+    const initialBreeds = searchParams.breed ? String(searchParams.breed).split('|') : [];
+    const genders = searchParams.gender ? String(searchParams.gender).split('|') : [];
+    const healths = searchParams.healthBadge ? String(searchParams.healthBadge).split('|') : [];
+    const ageRanges = searchParams.ageRange ? String(searchParams.ageRange).split(',') : [];
+    const temps = searchParams.temperament ? String(searchParams.temperament).split('|') : [];
+
+    const initialFilters = {
+        ...defaultFilters,
+        male: genders.includes("Male"),
+        female: genders.includes("Female"),
+        age1: ageRanges.includes("0-2"),
+        age2: ageRanges.includes("2-5"),
+        age3: ageRanges.includes("5-8"),
+        age4: ageRanges.includes("8-10"),
+        age5: ageRanges.includes("10-12"),
+        vaccinated: healths.includes("Vaccinated"),
+        notVaccinated: healths.includes("Not Vaccinated"),
+        friendly: temps.includes("Friendly"),
+        social: temps.includes("Social"),
+        gentle: temps.includes("Gentle"),
+        affectionate: temps.includes("Affectionate"),
+        goodWithKids: temps.includes("Good With Kids"),
+    };
+
+    const [distance, setDistance] = useState(initialDistance);
+    const [filters, setFilters] = useState(initialFilters);
+    const [selectedBreeds, setSelectedBreeds] = useState<string[]>(initialBreeds);
     
     // Modal states
     const [breedModalVisible, setBreedModalVisible] = useState(false);

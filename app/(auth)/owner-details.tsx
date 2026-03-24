@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -14,6 +15,7 @@ import {
 import { Image } from "expo-image";
 import { API_URL } from "../../constants/api";
 import { useAuth } from "../../context/AuthContext";
+import { getUploadableUri } from "../../utils/fileUpload";
 
 const STATES = [
     "Andhra Pradesh", "Delhi", "Gujarat", "Karnataka",
@@ -63,9 +65,53 @@ export default function OwnerDetails() {
         }
     };
 
+    const handleAutoDetectLocation = async () => {
+        setLoading(true);
+        try {
+            let { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Permission to access location was denied');
+                return;
+            }
+
+            let location = await Location.getCurrentPositionAsync({});
+            let reverseGeocode = await Location.reverseGeocodeAsync({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+            });
+
+            if (reverseGeocode.length > 0) {
+                const address = reverseGeocode[0];
+                const detectedState = address.region || "";
+                const detectedCity = address.city || address.district || address.subregion || "";
+
+                if (detectedState) {
+                    // Try to match with our list or set directly if it's a new state
+                    setSelectedState(detectedState);
+                    if (detectedCity) {
+                        setSelectedCity(detectedCity);
+                    }
+                } else {
+                    Alert.alert("Location Detected", `We found you in ${detectedCity}, but couldn't determine the state.`);
+                }
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert("Error", "Could not detect location. Please try again or select manually.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleNext = async () => {
         if (!fullName || !email || !selectedState || !selectedCity) {
             Alert.alert("Error", "Please fill in all required fields.");
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert("Error", "Please enter a valid email address.");
             return;
         }
 
@@ -78,11 +124,12 @@ export default function OwnerDetails() {
             formData.append("city", selectedCity);
 
             if (image) {
-                const filename = image.split('/').pop();
-                const match = /\.(\w+)$/.exec(filename!);
-                const type = match ? `image/${match[1]}` : `image`;
-                // @ts-ignore
-                formData.append("profileImage", { uri: image, name: filename, type });
+                const fileUri = await getUploadableUri(image);
+                const filename = fileUri.split('/').pop() || `profile_${Date.now()}.jpg`;
+                const match = /\.(\w+)$/.exec(filename);
+                const type = match ? `image/${match[1]}` : "image/jpeg";
+                // @ts-ignore - React Native FormData accepts { uri, name, type }
+                formData.append("profileImage", { uri: fileUri, name: filename, type });
             }
 
             const response = await fetch(`${API_URL}/user/profile`, {
@@ -169,7 +216,11 @@ export default function OwnerDetails() {
                         placeholder="Full Name*"
                         placeholderTextColor="#888"
                         value={fullName}
-                        onChangeText={setFullName}
+                        onChangeText={(text) => {
+                            // Allow only letters and spaces
+                            const filteredText = text.replace(/[^a-zA-Z\s]/g, "");
+                            setFullName(filteredText);
+                        }}
                     />
                     <View className="h-px bg-[#2A3A45]" />
                 </View>
@@ -279,10 +330,17 @@ export default function OwnerDetails() {
                     )}
                 </View>
 
-                {/* Auto detect */}
-                <TouchableOpacity className="items-center mt-5" activeOpacity={0.7}>
-                    <Text className="text-[#7ED6D1] text-[15px]">Auto detect location</Text>
-                </TouchableOpacity>
+                {/* Auto detect 
+                <TouchableOpacity 
+                    className="items-center mt-5" 
+                    activeOpacity={0.7}
+                    onPress={handleAutoDetectLocation}
+                    disabled={loading}
+                >
+                    <Text className="text-[#7ED6D1] text-[15px]">
+                        {loading ? "Detecting..." : "Auto detect location"}
+                    </Text>
+                </TouchableOpacity> */}
 
                 <View className="h-24" />
             </ScrollView>
